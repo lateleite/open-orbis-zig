@@ -1,0 +1,28 @@
+.{
+    .name = .open_orbis_zig,
+    .version = "0.1.0",
+    .fingerprint = 0x6a4d2c11f812f38,
+    .minimum_zig_version = "0.17.0-dev.1387+01b60634c",
+    .dependencies = .{
+        .musl = .{
+            .url = "git+https://github.com/lateleite/openorbis-musl#4b098f6a34906dd3f569004e880910b54456bdfd",
+            .hash = "N-V-__8AAEpBNACj3ZDvVuukJ-zfTBNJK9ZQ8i6TY347NiyK",
+        },
+        .orbpack = .{
+            .url = "git+https://github.com/lateleite/orbpack.git#b360e5d4777a3524b1af26980e3c9685159f7651",
+            .hash = "orbpack-0.0.1-_uYG8UK-AACXL7eDF0MSxlihLLnuV-iGAmhHeeJem4Vy",
+        },
+        .upstream = .{
+            .url = "https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/archive/0a1aaf9dd4a92695538bdeb09fb056d06dd11725.tar.gz",
+            .hash = "N-V-__8AAFkofgWEo4DcZqE18rnun4748EeDpEEeR1auagq5",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "link.x",
+        "lib_stubs",
+        "musl",
+        "src",
+    },
+}
