@@ -52,6 +52,7 @@ pub fn build(b: *std.Build) !void {
         libc.root_module.addIncludePath(b.path("musl/src/internal"));
         libc.root_module.addIncludePath(upstream_musl.path("src/internal"));
         libc.root_module.addIncludePath(upstream_musl.path("include"));
+        libc.root_module.addIncludePath(b.path("overlay/include"));
         libc.root_module.addIncludePath(upstream.path("include"));
 
         libc.root_module.addCSourceFiles(.{
@@ -83,6 +84,7 @@ pub fn build(b: *std.Build) !void {
         libc.installHeadersDirectory(upstream_musl.path("arch/ps4/bits"), "bits", .{});
         libc.installHeadersDirectory(b.path("musl/include"), "", .{});
         libc.installHeadersDirectory(upstream.path("include"), "", .{});
+        libc.installHeadersDirectory(b.path("overlay/include"), "", .{});
 
         b.installArtifact(libc);
     }
