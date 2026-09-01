@@ -129,12 +129,7 @@ pub fn build(b: *std.Build) !void {
     step_check.dependOn(&check_exe.step);
 }
 
-const DEFAULT_EBOOT_PATH = "eboot.bin";
-const DEFAULT_GP4_PATH = "pkg.gp4";
-const DEFAULT_SFO_PATH = "sce_sys/param.sfo";
-
 pub const CreateFselfOptions = struct {
-    out_sub_path: []const u8 = DEFAULT_EBOOT_PATH,
     paid: ?[]const u8 = "0x3800000000000011",
 };
 
@@ -145,6 +140,7 @@ fn panicUnsupported() noreturn {
 pub fn createFself(
     b: *Build,
     exe: *Build.Step.Compile,
+    name: []const u8,
     options: CreateFselfOptions,
 ) Build.LazyPath {
     std.debug.assert(exe.kind == .exe);
@@ -159,7 +155,7 @@ pub fn createFself(
 
     const eboot_cmd = b.addSystemCommand(&.{mkfself_path});
     eboot_cmd.addPrefixedFileArg("-in=", exe.getEmittedBin());
-    const eboot_file = eboot_cmd.addPrefixedOutputFileArg("-eboot=", options.out_sub_path);
+    const eboot_file = eboot_cmd.addOutputFileArg2(name, .{ .prefix = "-eboot=" });
     if (options.paid) |paid| {
         eboot_cmd.addArgs(&.{ "--paid", paid });
     }
@@ -177,88 +173,68 @@ pub fn createSfo(
     manifest_path: Build.LazyPath,
     out_sub_path: []const u8,
 ) Build.LazyPath {
-    const dep_orbpack = orbis_dep.builder.dependency("orbpack", .{});
+    const native_target = b.graph.host;
+    const dep_orbpack = orbis_dep.builder.dependency("orbpack", .{
+        .target = native_target,
+        .optimize = .safe,
+    });
     const exe_orbpack = dep_orbpack.artifact("orbpack");
 
     const sfo_cmd = b.addRunArtifact(exe_orbpack);
     sfo_cmd.addArgs(&.{ "sfo", "build" });
     sfo_cmd.addFileArg(manifest_path);
-    return sfo_cmd.addOutputFileArg(out_sub_path);
+    return sfo_cmd.addOutputFileArg2(out_sub_path, .{});
 }
 
-pub const CreateGp4Options = struct {
-    eboot_path: []const u8 = DEFAULT_EBOOT_PATH,
-    sfo_path: []const u8 = DEFAULT_SFO_PATH,
-    out_path: []const u8 = DEFAULT_GP4_PATH,
+pub const Asset = struct {
+    source: std.Build.LazyPath,
+    target_path: []const u8,
 };
 
 pub fn createGp4(
     b: *Build,
+    orbis_dep: *Build.Dependency,
     content_id: []const u8,
-    assets: []const []const u8,
-    options: CreateGp4Options,
-) !Build.LazyPath {
-    const toolchain_path = getToolchainPath(b);
-    const mkgp4_path = b.fmt(switch (host_os) {
-        .linux => "{s}/bin/linux/create-gp4",
-        .macos => "{s}/bin/macos/create-gp4",
-        .windows => "{s}/bin/windows/create-gp4.exe",
-        else => panicUnsupported(),
-    }, .{toolchain_path});
+    assets: []const Asset,
+    out_name: []const u8,
+) Build.LazyPath {
+    const native_target = b.graph.host;
+    const dep_orbpack = orbis_dep.builder.dependency("orbpack", .{
+        .target = native_target,
+        .optimize = .safe,
+    });
+    const exe_orbpack = dep_orbpack.artifact("orbpack");
 
-    const gp4_cmd = b.addSystemCommand(&.{mkgp4_path});
-    gp4_cmd.addArg("-out");
-    const gp4_file = gp4_cmd.addOutputFileArg(options.out_path);
-    gp4_cmd.addArg(b.fmt("--content-id={s}", .{content_id}));
-    gp4_cmd.addArg("--files");
-
-    // add relative paths to gp4 file,
-    // argument must be manually put in quotes or else create-gp4 won't work properly
-    var files_buf = std.ArrayList(u8).empty;
+    const gp4_cmd = b.addRunArtifact(exe_orbpack);
+    gp4_cmd.addArgs(&.{ "gp4", "manifest" });
+    gp4_cmd.addArg("--output");
+    const out_file = gp4_cmd.addOutputFileArg2(out_name, .{});
     for (assets) |asset| {
-        try files_buf.appendSlice(b.allocator, asset);
-        try files_buf.append(b.allocator, ' ');
+        gp4_cmd.addArg("--file");
+        // HACK: LibOrbisPkg doesn't handle different original_paths and target_paths, so use the
+        // installed target path already.
+        // gp4_cmd.addFileArg2(asset.source, .{ .suffix = b.fmt("={s}", .{asset.target_path}) });
+        gp4_cmd.addArg(b.fmt("{0s}={0s}", .{asset.target_path}));
     }
-    try files_buf.appendSlice(b.allocator, options.eboot_path);
-    try files_buf.append(b.allocator, ' ');
-    try files_buf.appendSlice(b.allocator, options.sfo_path);
-
-    const gp4_args_files = try files_buf.toOwnedSlice(b.allocator);
-    defer b.allocator.free(gp4_args_files);
-    gp4_cmd.addArg(gp4_args_files);
-
-    return gp4_file;
+    gp4_cmd.addArg(content_id);
+    return out_file;
 }
-
-pub const SetupPkgArguments = struct {
-    eboot_file: Build.LazyPath,
-    gp4_file: Build.LazyPath,
-    sfo_file: Build.LazyPath,
-};
 
 pub fn setupPkg(
     b: *Build,
-    assets: []const []const u8,
-    args: SetupPkgArguments,
+    assets: []const Asset,
 ) *Build.Step.WriteFile {
     const wf = b.addWriteFiles();
 
-    // copy pkg.gp4 to working directory
-    _ = wf.addCopyFile(args.gp4_file, DEFAULT_GP4_PATH);
-
     // setup assets in cache directory
     for (assets) |asset| {
-        _ = wf.addCopyFile(b.path(asset), asset);
+        _ = wf.addCopyFile(asset.source, asset.target_path);
     }
-    // copy eboot to cache directory
-    _ = wf.addCopyFile(args.eboot_file, DEFAULT_EBOOT_PATH);
-    // copy param.sfo to cache directory
-    _ = wf.addCopyFile(args.sfo_file, DEFAULT_SFO_PATH);
 
     return wf;
 }
 
-pub fn createPkg(b: *Build, wf: *Build.Step.WriteFile) *Build.Step.Run {
+pub fn createPkg(b: *Build, wf: *Build.Step.WriteFile, gp4_file: Build.LazyPath) *Build.Step.Run {
     const toolchain_path = getToolchainPath(b);
     const pkgtool_path = b.fmt(switch (host_os) {
         .linux => "{s}/bin/linux/PkgTool.Core",
@@ -267,10 +243,8 @@ pub fn createPkg(b: *Build, wf: *Build.Step.WriteFile) *Build.Step.Run {
         else => panicUnsupported(),
     }, .{toolchain_path});
 
-    const gp4_file_work = wf.getDirectory().path(b, DEFAULT_GP4_PATH);
-
     const pkg_cmd = b.addSystemCommand(&.{ pkgtool_path, "pkg_build" });
-    pkg_cmd.addFileArg(gp4_file_work);
+    pkg_cmd.addFileArg(gp4_file);
     pkg_cmd.addDirectoryArg(wf.getDirectory());
 
     return pkg_cmd;
@@ -312,7 +286,7 @@ fn buildSystemLibraryStub(
 }
 
 // build system shared library stubs.
-// C# DLLs/PRXs were deliberately ignored ignored
+// C# DLLs/PRXs were deliberately ignored
 const SYSTEM_LIBRARIES: []const []const u8 = &.{
     "NativeExtensions",
     "ReactNative.Modules.Vsh",
