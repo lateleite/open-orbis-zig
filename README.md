@@ -25,6 +25,9 @@ zig fetch --save git+https://github.com/lateleite/open-orbis-zig.git
 
 Then in your `build.zig` file:
 ```zig
+// ...
+const orbis = @import("open_orbis_zig");
+
 pub fn build(b: *std.Build) !void {
     // ...
 
@@ -60,37 +63,38 @@ pub fn build(b: *std.Build) !void {
     //
     // packaging steps
     //
-    const EBOOT_PATH = "eboot.bin";
-    const GP4_PATH = "pkg.gp4";
-    const SFO_PATH = "sce_sys/param.sfo";
-    const CONTENT_ID = "IV0000-ZIGG00001_00-ZIGTEST000000000";
-    const PKG_NAME = CONTENT_ID ++ ".pkg";
+    const content_id = "IV0000-ZIGG00001_00-ZIGTEST000000000";
 
     // create fakeself eboot.bin out of new executable
-    const eboot_file = orbis.createFself(b, exe, .{});
+    const eboot_file = orbis.createFself(b, exe, "eboot.bin", .{});
 
     // create param.sfo describing program's package
-    const sfo_file = orbis.createSfo(
-        b,
-        dep_orbis,
-        b.path("sce_sys/param.sfo.zon"),
-        SFO_PATH,
-    );
+    const sfo_file = orbis.createSfo(b, dep_orbis, b.path(b, "param.sfo.zon"), "param.sfo");
 
     // generate pkg.gp4
-    const gp4_file = try orbis.createGp4(b, CONTENT_ID, &PKG_ASSETS, .{});
+    const my_assets: []const orbis.Asset = &.{
+        .{ .source = eboot_file, .target_path = "eboot.bin" },
+        .{ .source = sfo_file, .target_path = "sce_sys/param.sfo" },
+        .{ .source = b.path("assets/sce_module/libSceFios2.prx"), .target_path = "sce_module/libSceFios2.prx" },
+        .{ .source = b.path("assets/sce_module/libc.prx"), .target_path = "sce_module/libc.prx" },
+        .{ .source = b.path("assets/sce_sys/about/right.sprx"), .target_path = "sce_sys/about/right.sprx" },
+        .{ .source = b.path("assets/sce_sys/icon0.png"), .target_path = "sce_sys/icon0.png" },
+        .{ .source = b.path("models/whatever_you_want.gltf"), .target_path = "models/wherever_you_want.gltf" },
+    };
+
+    const gp4_file = orbis.createGp4(b, dep_orbis, content_id, my_assets, "pkg.gp4");
 
     // build the PKG itself
-    // depends on eboot.bin, param.sfo, pkg.gp4 and other assets
-    const wf_pkg = orbis.setupPkg(b, &PKG_ASSETS, .{
-        .eboot_file = eboot_file,
-        .gp4_file = gp4_file,
-        .sfo_file = sfo_file,
-    });
-    const pkg_cmd = orbis.createPkg(b, wf_pkg);
+    // depends on all previously generated assets
+    const wf_pkg = orbis.setupPkg(b, my_assets);
+    // HACK: LibOrbisPkg needs the gp4 file to be with all other assets,
+    // else it won't be able to find the asset files.
+    const installed_gp4_file = wf_pkg.addCopyFile(gp4_file, "pkg.gp4");
+    const pkg_cmd = orbis.createPkg(b, wf_pkg, installed_gp4_file);
 
     // install the new PKG
-    const install_pkg = b.addInstallFile(wf_pkg.getDirectory().path(b, PKG_NAME), PKG_NAME);
+    const pkg_name = b.fmt("{s}.pkg", .{content_id});
+    const install_pkg = b.addInstallFile(wf_pkg.getDirectory().path(b, pkg_name), pkg_name);
     // depend on the pkg itself
     install_pkg.step.dependOn(&pkg_cmd.step);
     // add PKG installation to install step
@@ -98,7 +102,7 @@ pub fn build(b: *std.Build) !void {
 
     // add eboot.bin to install step,
     // useful for emulators
-    const install_eboot = b.addInstallFile(wf_pkg.getDirectory().path(b, EBOOT_PATH), EBOOT_PATH);
+    const install_eboot = b.addInstallFile(eboot_file, "eboot.bin");
     install_eboot.step.dependOn(&pkg_cmd.step);
     b.getInstallStep().dependOn(&install_eboot.step);
 
