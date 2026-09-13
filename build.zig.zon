@@ -23,6 +23,7 @@
         "link.x",
         "lib_stubs",
         "musl",
+        "overlay",
         "src",
     },
 }
