@@ -9,8 +9,8 @@
             .hash = "N-V-__8AAEpBNACj3ZDvVuukJ-zfTBNJK9ZQ8i6TY347NiyK",
         },
         .orbpack = .{
-            .url = "git+https://github.com/lateleite/orbpack.git#b52a4fcb64c4def1513e9e7be2b4e2623a77a19c",
-            .hash = "orbpack-0.0.1-_uYG8ZT0AAAvWFzb3k-oDd_a5OK9kjiwo99ADJlGmfwI",
+            .url = "git+https://github.com/lateleite/orbpack.git#1c7f2768dcda7a493d647be12eef8b952b9977bb",
+            .hash = "orbpack-0.0.1-_uYG8U6fAwB0800T9ZgW5KE0ZistTLL45CXVlbTKYBlR",
         },
         .upstream = .{
             .url = "https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/archive/0a1aaf9dd4a92695538bdeb09fb056d06dd11725.tar.gz",
