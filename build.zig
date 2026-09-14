@@ -167,6 +167,36 @@ pub fn createFself(
     return eboot_file;
 }
 
+pub fn createPrx(
+    b: *Build,
+    lib: *Build.Step.Compile,
+    name: []const u8,
+    options: CreateFselfOptions,
+) Build.LazyPath {
+    std.debug.assert(lib.kind == .lib);
+
+    const toolchain_path = getToolchainPath(b);
+    const mkfself_path = b.fmt(switch (host_os) {
+        .linux => "{s}/bin/linux/create-fself",
+        .macos => "{s}/bin/macos/create-fself",
+        .windows => "{s}/bin/windows/create-fself.exe",
+        else => panicUnsupported(),
+    }, .{toolchain_path});
+
+    const prx_cmd = b.addSystemCommand(&.{mkfself_path});
+    prx_cmd.addPrefixedFileArg("-in=", lib.getEmittedBin());
+    const prx_file = prx_cmd.addOutputFileArg2(name, .{ .prefix = "--lib=" });
+    if (options.paid) |paid| {
+        prx_cmd.addArgs(&.{ "--paid", paid });
+    }
+    prx_cmd.addArgs(&.{ "--libname", name });
+
+    // fself depends on elf
+    prx_cmd.step.dependOn(&lib.step);
+
+    return prx_file;
+}
+
 pub fn createSfo(
     b: *Build,
     orbis_dep: *Build.Dependency,
@@ -248,6 +278,111 @@ pub fn createPkg(b: *Build, wf: *Build.Step.WriteFile, gp4_file: Build.LazyPath)
     pkg_cmd.addDirectoryArg(wf.getDirectory());
 
     return pkg_cmd;
+}
+
+pub fn buildPrxRight(
+    b: *std.Build,
+    orbis_dep: *Build.Dependency,
+    target: std.Build.ResolvedTarget,
+) Build.LazyPath {
+    const lib_right = b.addLibrary(.{
+        .name = "right",
+        .linkage = .dynamic,
+        .root_module = b.createModule(.{
+            .root_source_file = orbis_dep.path("src/libs/right/right.zig"),
+            .imports = &.{
+                .{ .name = "orbis", .module = orbis_dep.module("orbis") },
+            },
+            .target = target,
+            .optimize = .fast,
+            .link_libc = false,
+            .link_libcpp = false,
+            .sanitize_c = .off,
+            .sanitize_thread = false,
+        }),
+        .use_llvm = true,
+        .use_lld = true,
+    });
+    lib_right.setLinkerScript(orbis_dep.path("link.x"));
+    lib_right.link_gc_sections = false;
+
+    const wf_syslibs = orbis_dep.namedWriteFiles("sys_libs");
+    lib_right.root_module.addLibraryPath(wf_syslibs.getDirectory());
+    lib_right.root_module.linkSystemLibrary("kernel", .{});
+
+    return createPrx(b, lib_right, "sceGameRight.prx", .{});
+}
+
+pub fn buildPrxLibcStub(
+    b: *std.Build,
+    orbis_dep: *Build.Dependency,
+    target: std.Build.ResolvedTarget,
+) Build.LazyPath {
+    const libc_stub = b.addLibrary(.{
+        .name = "c",
+        .linkage = .dynamic,
+        .root_module = b.createModule(.{
+            .root_source_file = orbis_dep.path("src/libs/c/c.zig"),
+            .imports = &.{
+                .{ .name = "orbis", .module = orbis_dep.module("orbis") },
+            },
+            .target = target,
+            .optimize = .fast,
+            .link_libc = false,
+            .link_libcpp = false,
+            .sanitize_c = .off,
+            .sanitize_thread = false,
+            .pic = true,
+            .valgrind = false,
+            .no_builtin = true,
+        }),
+        .use_llvm = true,
+        .use_lld = true,
+    });
+    libc_stub.setLinkerScript(orbis_dep.path("link.x"));
+    libc_stub.link_gc_sections = false;
+
+    const wf_syslibs = orbis_dep.namedWriteFiles("sys_libs");
+    libc_stub.root_module.addLibraryPath(wf_syslibs.getDirectory());
+    libc_stub.root_module.linkSystemLibrary("kernel", .{});
+
+    return createPrx(b, libc_stub, "libc.prx", .{});
+}
+
+pub fn buildPrxFios2Stub(
+    b: *std.Build,
+    orbis_dep: *Build.Dependency,
+    target: std.Build.ResolvedTarget,
+) Build.LazyPath {
+    const fios_stub = b.addLibrary(.{
+        .name = "SceFios2",
+        .linkage = .dynamic,
+        .root_module = b.createModule(.{
+            .root_source_file = orbis_dep.path("src/libs/fios2/fios2.zig"),
+            .imports = &.{
+                .{ .name = "orbis", .module = orbis_dep.module("orbis") },
+            },
+            .target = target,
+            .optimize = .fast,
+            .link_libc = false,
+            .link_libcpp = false,
+            .sanitize_c = .off,
+            .sanitize_thread = false,
+            .pic = true,
+            .valgrind = false,
+            .no_builtin = true,
+        }),
+        .use_llvm = true,
+        .use_lld = true,
+    });
+    fios_stub.setLinkerScript(orbis_dep.path("link.x"));
+    fios_stub.link_gc_sections = false;
+
+    const wf_syslibs = orbis_dep.namedWriteFiles("sys_libs");
+    fios_stub.root_module.addLibraryPath(wf_syslibs.getDirectory());
+    fios_stub.root_module.linkSystemLibrary("kernel", .{});
+
+    return createPrx(b, fios_stub, "libSceFios2.prx", .{});
 }
 
 fn buildSystemLibraryStub(
