@@ -89,6 +89,9 @@ pub fn build(b: *std.Build) !void {
         b.installArtifact(libc);
     }
 
+    //
+    // PS4 system shared library stubs
+    //
     const maybe_sys_lib_wf = if (!is_orbis_build) null else blk: {
         const sys_lib_wf = b.addNamedWriteFiles("sys_libs");
         for (SYSTEM_LIBRARIES) |lib_name| {
@@ -97,6 +100,9 @@ pub fn build(b: *std.Build) !void {
         break :blk sys_lib_wf;
     };
 
+    //
+    // Zig PS4 bindings
+    //
     const mod_orbis = b.addModule("orbis", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -129,13 +135,13 @@ pub fn build(b: *std.Build) !void {
     step_check.dependOn(&check_exe.step);
 }
 
-pub const CreateFselfOptions = struct {
-    paid: ?[]const u8 = "0x3800000000000011",
-};
-
 fn panicUnsupported() noreturn {
     std.debug.panic("Your operating system {t} is not supported by OpenOrbis' Toolchain", .{host_os});
 }
+
+pub const CreateFselfOptions = struct {
+    paid: ?[]const u8 = "0x3800000000000011",
+};
 
 pub fn createFself(
     b: *Build,
@@ -285,14 +291,13 @@ pub fn buildPrxRight(
     orbis_dep: *Build.Dependency,
     target: std.Build.ResolvedTarget,
 ) Build.LazyPath {
+    const obj_moduleparam = buildModuleParam(b, orbis_dep, target, .{});
+
     const lib_right = b.addLibrary(.{
         .name = "right",
         .linkage = .dynamic,
         .root_module = b.createModule(.{
             .root_source_file = orbis_dep.path("src/libs/right/right.zig"),
-            .imports = &.{
-                .{ .name = "orbis", .module = orbis_dep.module("orbis") },
-            },
             .target = target,
             .optimize = .fast,
             .link_libc = false,
@@ -303,6 +308,7 @@ pub fn buildPrxRight(
         .use_llvm = true,
         .use_lld = true,
     });
+    lib_right.root_module.addObject(obj_moduleparam);
     lib_right.setLinkerScript(orbis_dep.path("link.x"));
     lib_right.link_gc_sections = false;
 
@@ -318,14 +324,13 @@ pub fn buildPrxLibcStub(
     orbis_dep: *Build.Dependency,
     target: std.Build.ResolvedTarget,
 ) Build.LazyPath {
+    const obj_moduleparam = buildModuleParam(b, orbis_dep, target, .{});
+
     const libc_stub = b.addLibrary(.{
         .name = "c",
         .linkage = .dynamic,
         .root_module = b.createModule(.{
             .root_source_file = orbis_dep.path("src/libs/c/c.zig"),
-            .imports = &.{
-                .{ .name = "orbis", .module = orbis_dep.module("orbis") },
-            },
             .target = target,
             .optimize = .fast,
             .link_libc = false,
@@ -339,6 +344,7 @@ pub fn buildPrxLibcStub(
         .use_llvm = true,
         .use_lld = true,
     });
+    libc_stub.root_module.addObject(obj_moduleparam);
     libc_stub.setLinkerScript(orbis_dep.path("link.x"));
     libc_stub.link_gc_sections = false;
 
@@ -354,14 +360,13 @@ pub fn buildPrxFios2Stub(
     orbis_dep: *Build.Dependency,
     target: std.Build.ResolvedTarget,
 ) Build.LazyPath {
+    const obj_moduleparam = buildModuleParam(b, orbis_dep, target, .{});
+
     const fios_stub = b.addLibrary(.{
         .name = "SceFios2",
         .linkage = .dynamic,
         .root_module = b.createModule(.{
             .root_source_file = orbis_dep.path("src/libs/fios2/fios2.zig"),
-            .imports = &.{
-                .{ .name = "orbis", .module = orbis_dep.module("orbis") },
-            },
             .target = target,
             .optimize = .fast,
             .link_libc = false,
@@ -375,6 +380,7 @@ pub fn buildPrxFios2Stub(
         .use_llvm = true,
         .use_lld = true,
     });
+    fios_stub.root_module.addObject(obj_moduleparam);
     fios_stub.setLinkerScript(orbis_dep.path("link.x"));
     fios_stub.link_gc_sections = false;
 
@@ -418,6 +424,137 @@ fn buildSystemLibraryStub(
     });
 
     _ = wf.addCopyFile(stub_lib.getEmittedBin(), b.fmt("lib{s}.so", .{name}));
+}
+
+pub const BuildProcessParamOptions = struct {
+    sdk_version: ?SdkVersion = null,
+
+    process_name: ?[:0]const u8 = null,
+    main_thread_name: ?[:0]const u8 = null,
+    main_thread_priority: ?i32 = null,
+    main_thread_stack_size: ?u64 = null,
+    process_preload_enabled: ?u64 = null,
+
+    extended_page_table: ?u64 = null,
+    flexible_memory_size: ?u64 = null,
+    extended_memory_1: ?u8 = null,
+    extended_memory_2: ?u8 = null,
+    extended_cpu_page_table: ?u64 = null,
+    extended_gpu_page_table: ?u64 = null,
+
+    dup_dent: ?u32 = null,
+
+    pub const SdkVersion = struct {
+        major: u8,
+        minor: u12,
+        patch: u12,
+    };
+};
+
+pub fn buildProcessParam(
+    b: *std.Build,
+    orbis_dep: *Build.Dependency,
+    target: std.Build.ResolvedTarget,
+    options: BuildProcessParamOptions,
+) *Build.Step.Compile {
+    const module_options = b.addOptions();
+    if (options.sdk_version) |ver| {
+        module_options.addOption(u8, "sdk_version_major", ver.major);
+        module_options.addOption(u12, "sdk_version_minor", ver.minor);
+        module_options.addOption(u12, "sdk_version_patch", ver.patch);
+    } else {
+        module_options.addOption(u8, "sdk_version_major", 8);
+        module_options.addOption(u12, "sdk_version_minor", 8);
+        module_options.addOption(u12, "sdk_version_patch", 17);
+    }
+
+    module_options.addOption(?[:0]const u8, "process_name", options.process_name);
+    module_options.addOption(?[:0]const u8, "main_thread_name", options.main_thread_name);
+    module_options.addOption(?i32, "main_thread_priority", options.main_thread_priority);
+    module_options.addOption(?u64, "main_thread_stack_size", options.main_thread_stack_size);
+    module_options.addOption(?u64, "process_preload_enabled", options.process_preload_enabled);
+
+    module_options.addOption(?u64, "extended_page_table", options.extended_page_table);
+    module_options.addOption(?u64, "flexible_memory_size", options.flexible_memory_size);
+    module_options.addOption(?u8, "extended_memory_1", options.extended_memory_1);
+    module_options.addOption(?u8, "extended_memory_2", options.extended_memory_2);
+    module_options.addOption(?u64, "extended_cpu_page_table", options.extended_cpu_page_table);
+    module_options.addOption(?u64, "extended_gpu_page_table", options.extended_gpu_page_table);
+
+    module_options.addOption(?u32, "dup_dent", options.dup_dent);
+
+    const obj = b.addObject(.{
+        .name = "proc_param",
+        .root_module = b.createModule(.{
+            .root_source_file = orbis_dep.path("src/ProcessParam.zig"),
+            .imports = &.{
+                .{ .name = "options", .module = module_options.createModule() },
+            },
+            .target = target,
+            .optimize = .fast,
+            .link_libc = false,
+            .link_libcpp = false,
+            .sanitize_c = .off,
+            .sanitize_thread = false,
+            .pic = true,
+            .valgrind = false,
+            .no_builtin = true,
+        }),
+        .use_llvm = true,
+        .use_lld = true,
+    });
+
+    return obj;
+}
+
+pub const BuildModuleParamOptions = struct {
+    sdk_version: ?SdkVersion = null,
+
+    pub const SdkVersion = struct {
+        major: u8,
+        minor: u12,
+        patch: u12,
+    };
+};
+
+pub fn buildModuleParam(
+    b: *std.Build,
+    orbis_dep: *Build.Dependency,
+    target: std.Build.ResolvedTarget,
+    options: BuildModuleParamOptions,
+) *Build.Step.Compile {
+    const module_options = b.addOptions();
+    if (options.sdk_version) |ver| {
+        module_options.addOption(u8, "sdk_version_major", ver.major);
+        module_options.addOption(u12, "sdk_version_minor", ver.minor);
+        module_options.addOption(u12, "sdk_version_patch", ver.patch);
+    } else {
+        module_options.addOption(u8, "sdk_version_major", 8);
+        module_options.addOption(u12, "sdk_version_minor", 8);
+        module_options.addOption(u12, "sdk_version_patch", 17);
+    }
+
+    const obj = b.addObject(.{
+        .name = "module_param",
+        .root_module = b.createModule(.{
+            .root_source_file = orbis_dep.path("src/ModuleParam.zig"),
+            .imports = &.{
+                .{ .name = "options", .module = module_options.createModule() },
+            },
+            .target = target,
+            .optimize = .fast,
+            .link_libc = false,
+            .link_libcpp = false,
+            .sanitize_c = .off,
+            .sanitize_thread = false,
+            .pic = true,
+            .valgrind = false,
+            .no_builtin = true,
+        }),
+        .use_llvm = true,
+        .use_lld = true,
+    });
+    return obj;
 }
 
 // build system shared library stubs.

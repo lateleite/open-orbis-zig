@@ -1,17 +1,19 @@
+const options = @import("options");
+
 pub export const sceModuleParam: ModuleParam linksection(".data.sce_module_param") = .{
     .struct_byte_len = @sizeOf(ModuleParam),
     .magic = ModuleParam.MAGIC,
-    .version = .{
-        .major = 8,
-        .minor = 8,
-        .patch = 0x11,
+    .sdk_version = .{
+        .major = options.sdk_version_major,
+        .minor = options.sdk_version_minor,
+        .patch = options.sdk_version_patch,
     },
 };
 
 const ModuleParam = extern struct {
     struct_byte_len: u64,
     magic: [8]u8,
-    version: packed struct(u64) {
+    sdk_version: packed struct(u64) {
         major: u8,
         minor: u12,
         patch: u12,

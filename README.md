@@ -2,7 +2,7 @@
 
 open-orbis-zig is an ***in development*** Zig package for interfacing and packaging applications for the PlayStation 4 through the [OpenOrbis SDK toolchain](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain).
 
-Zig 0.17.0's development version is required.
+Zig 0.17.0 is required.
 
 **WARNING**: usage of this package has some caveats: 
 
@@ -59,6 +59,18 @@ pub fn build(b: *std.Build) !void {
     // make sure to ALWAYS set this linker script in your executable,
     // or else it will be invalid on Orbis OS
     exe.setLinkerScript(dep_orbis.path("link.x"));
+
+    // to add a ProcessParam to your executables,
+    // use `buildProcessParam` and link its object to your library.
+    // see `BuildProcessParamOptions` for any available options.
+    const obj_moduleparam = orbis.buildProcessParam(b, orbis_dep, target, .{});
+    exe.root_module.addObject(obj_moduleparam);
+
+    // to add a ModuleParam to your PRX shared libraries,
+    // see `BuildModuleParamOptions` for any available options.
+    // use `buildModuleParam` and link its object to your library.
+    const obj_moduleparam = orbis.buildModuleParam(b, orbis_dep, target, .{});
+    prx.root_module.addObject(obj_moduleparam);
 
     //
     // packaging steps

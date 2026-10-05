@@ -1,8 +1,6 @@
 //
 // port of OpenOrbis-Toolchain's right.sprx
 //
-const orbis = @import("orbis");
-
 export fn sceGameRightGetVersion() callconv(.c) u32 {
     return 1;
 }
@@ -30,7 +28,3 @@ const STRING_DATA: [:0]const u8 =
 ;
 
 const LOGO_DATA = @embedFile("logo.png");
-
-comptime {
-    orbis.useModuleSection();
-}
