@@ -56,23 +56,6 @@ pub fn build(b: *std.Build) !void {
         libc.root_module.addIncludePath(upstream.path("include"));
 
         libc.root_module.addCSourceFiles(.{
-            .root = upstream_musl.path("crt/ps4"),
-            .flags = &MUSL_CFLAGS,
-            .files = &.{
-                "crt1.c",
-            },
-            .language = .c,
-        });
-        libc.root_module.addCSourceFiles(.{
-            .root = upstream_musl.path("crt/ps4"),
-            .flags = &MUSL_CFLAGS,
-            .files = &.{
-                "crti.s",
-                "crtn.s",
-            },
-            .language = .assembly,
-        });
-        libc.root_module.addCSourceFiles(.{
             .root = upstream_musl.path("src"),
             .flags = &MUSL_CFLAGS,
             .files = MUSL_SRC_FILES,
@@ -87,6 +70,68 @@ pub fn build(b: *std.Build) !void {
         libc.installHeadersDirectory(b.path("overlay/include"), "", .{});
 
         b.installArtifact(libc);
+
+        // CRT for executables
+        const obj_crt_exe = b.addObject(.{
+            .name = "crt_exe",
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = .fast,
+                .link_libc = false,
+                .link_libcpp = false,
+                .sanitize_c = .off,
+                .sanitize_thread = false,
+                .valgrind = false,
+                .no_builtin = true,
+            }),
+            .use_llvm = true,
+            .use_lld = true,
+        });
+        obj_crt_exe.root_module.addCSourceFiles(.{
+            .root = upstream_musl.path("crt/ps4"),
+            .flags = &MUSL_CFLAGS,
+            .files = &.{
+                "crt1.c",
+            },
+            .language = .c,
+        });
+        obj_crt_exe.root_module.addCSourceFiles(.{
+            .root = upstream_musl.path("crt/ps4"),
+            .flags = &MUSL_CFLAGS,
+            .files = &.{
+                "crti.s",
+                "crtn.s",
+            },
+            .language = .assembly,
+        });
+        b.getInstallStep().dependOn(&b.addInstallArtifact(obj_crt_exe, .{ .dest_dir = .disabled }).step);
+
+        // crt for shared libraries
+        const obj_crt_lib = b.addObject(.{
+            .name = "crt_lib",
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = .fast,
+                .link_libc = false,
+                .link_libcpp = false,
+                .sanitize_c = .off,
+                .sanitize_thread = false,
+                .valgrind = false,
+                .no_builtin = true,
+            }),
+            .use_llvm = true,
+            .use_lld = true,
+        });
+        obj_crt_lib.root_module.addCSourceFiles(.{
+            .root = upstream_musl.path("crt/ps4"),
+            .flags = &MUSL_CFLAGS,
+            .files = &.{
+                "crti.s",
+                "crtn.s",
+            },
+            .language = .assembly,
+        });
+        b.getInstallStep().dependOn(&b.addInstallArtifact(obj_crt_lib, .{ .dest_dir = .disabled }).step);
     }
 
     //

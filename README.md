@@ -47,6 +47,16 @@ pub fn build(b: *std.Build) !void {
     // ...then in your executable or library module
     my_module.linkLibrary(lib_musl);
 
+    // to libc CRT for executables
+    const obj_crt_exe = dep_orbis.artifact("crt_exe");
+    // ...then in your executable
+    my_module.addObject(obj_crt_exe);
+
+    // to libc CRT for libraries
+    const obj_crt_lib = dep_orbis.artifact("crt_lib");
+    // ...then in your library
+    my_module.addObject(obj_crt_lib);
+
     // to link system libraries to your module:
     const wf_syslibs = dep_orbis.namedWriteFiles("sys_libs");
     // ...then in your executable or library module
@@ -129,7 +139,7 @@ pub fn build(b: *std.Build) !void {
 
 ## License
 
-Most code he is released to public domain and/or, if you prefer, under the BSD Zero Clause license.
+Most code here is released to public domain and/or, if you prefer, under the BSD Zero Clause license.
 
 Exceptions:
 
