@@ -1,6 +1,6 @@
 const options = @import("options");
 
-pub export const sceModuleParam: ModuleParam linksection(".data.sce_module_param") = .{
+pub export var moduleParam: ModuleParam linksection(".data.sce_module_param") = .{
     .struct_byte_len = @sizeOf(ModuleParam),
     .magic = ModuleParam.MAGIC,
     .sdk_version = .{

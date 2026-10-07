@@ -26,7 +26,7 @@ pub const E = enum(u32) {
 fn convertErrno(val: i32) E {
     assert(val < 0);
     const val_unsigned: u32 = @bitCast(val);
-    return @enumFromInt(val_unsigned - 0x80000000);
+    return @fromBackingInt(@intCast(val_unsigned - 0x80000000));
 }
 
 pub const UnexpectedError = error{
@@ -34,7 +34,7 @@ pub const UnexpectedError = error{
 };
 fn unexpectedErrno(err: i32) UnexpectedError {
     std.debug.print("unexpected errno: {d} (0x{x})\n", .{ err, @as(u32, @bitCast(err)) });
-    std.debug.dumpCurrentStackTrace(null);
+    std.debug.dumpCurrentStackTrace(.{});
     return error.Unexpected;
 }
 

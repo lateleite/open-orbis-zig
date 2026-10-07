@@ -1,5 +1,7 @@
 const std = @import("std");
+const Io = std.Io;
 const math = std.math;
+const ps4 = std.os.ps4;
 const assert = std.debug.assert;
 const page_size_min = std.heap.page_size_min;
 
@@ -7,142 +9,6 @@ pub const page_size_default = 16 << 10; // 16kb
 pub const page_size_large = 2048 << 10; // 2mb
 
 pub const off_t = i64;
-
-pub const E = enum(u16) {
-    SUCCESS = 0,
-
-    //
-    // FreeBSD's 9.0 error codes
-    //
-    PERM = 1,
-    NOENT = 2,
-    SRCH = 3,
-    INTR = 4,
-    IO = 5,
-    NXIO = 6,
-    @"2BIG" = 7,
-    NOEXEC = 8,
-    BADF = 9,
-    CHILD = 10,
-    DEADLK = 11,
-    NOMEM = 12,
-    ACCES = 13,
-    FAULT = 14,
-    NOTBLK = 15,
-    BUSY = 16,
-    EXIST = 17,
-    XDEV = 18,
-    NODEV = 19,
-    NOTDIR = 20,
-    ISDIR = 21,
-    INVAL = 22,
-    NFILE = 23,
-    MFILE = 24,
-    NOTTY = 25,
-    TXTBSY = 26,
-    FBIG = 27,
-    NOSPC = 28,
-    SPIPE = 29,
-    ROFS = 30,
-    MLINK = 31,
-    PIPE = 32,
-    DOM = 33,
-    RANGE = 34,
-    AGAIN = 35,
-    INPROGRESS = 36,
-    ALREADY = 37,
-    NOTSOCK = 38,
-    DESTADDRREQ = 39,
-    MSGSIZE = 40,
-    PROTOTYPE = 41,
-    NOPROTOOPT = 42,
-    PROTONOSUPPORT = 43,
-    SOCKTNOSUPPORT = 44,
-    OPNOTSUPP = 45,
-    PFNOSUPPORT = 46,
-    AFNOSUPPORT = 47,
-    ADDRINUSE = 48,
-    ADDRNOTAVAIL = 49,
-    NETDOWN = 50,
-    NETUNREACH = 51,
-    NETRESET = 52,
-    CONNABORTED = 53,
-    CONNRESET = 54,
-    NOBUFS = 55,
-    ISCONN = 56,
-    NOTCONN = 57,
-    SHUTDOWN = 58,
-    TOOMANYREFS = 59,
-    TIMEDOUT = 60,
-    CONNREFUSED = 61,
-    LOOP = 62,
-    NAMETOOLONG = 63,
-    HOSTDOWN = 64,
-    HOSTUNREACH = 65,
-    NOTEMPTY = 66,
-    PROCLIM = 67,
-    USERS = 68,
-    DQUOT = 69,
-    STALE = 70,
-    REMOTE = 71,
-    BADRPC = 72,
-    RPCMISMATCH = 73,
-    PROGUNAVAIL = 74,
-    PROGMISMATCH = 75,
-    PROCUNAVAIL = 76,
-    NOLCK = 77,
-    NOSYS = 78,
-    FTYPE = 79,
-    AUTH = 80,
-    NEEDAUTH = 81,
-    IDRM = 82,
-    NOMSG = 83,
-    OVERFLOW = 84,
-    CANCELED = 85,
-    ILSEQ = 86,
-    NOATTR = 87,
-    DOOFUS = 88,
-    BADMSG = 89,
-    MULTIHOP = 90,
-    NOLINK = 91,
-    PROTO = 92,
-    NOTCAPABLE = 93,
-    CAPMODE = 94,
-
-    //
-    // PS4's Orbis OS special error codes
-    //
-    // from Sce.PlayStation.Orbis.dll's Sce.PlayStation.Orbis.Sys.ErrorCode
-    NOBLK = 95,
-    ICV = 96,
-    NOPLAYGOENT = 97,
-    REVOKE = 98,
-    SDKVERSION = 99,
-    // from libSceLibcInternal's _Strerror
-    FILEPOS = 152,
-    NOMSGAVAIL = 1040, // "No message available"
-    NOSTREAM = 1050, // "No stream resources"
-    NOTASTREAM = 1051, // "Not a stream"
-    NOTRECOVERABLE = 1056, // "State not recoverable"
-    OTHER = 1062, // "Other"
-    OWNERDEAD = 1064, // "Owner dead"
-    STREAMTIMEOUT = 1074, // "Stream timeout"
-    _,
-};
-
-fn convertErrno(val: i32) E {
-    assert(val < 0);
-    return @enumFromInt(0x7FFE0000 - val);
-}
-
-pub const UnexpectedError = error{
-    Unexpected,
-};
-fn unexpectedErrno(err: E) UnexpectedError {
-    std.debug.print("unexpected errno: {}\n", .{err});
-    std.debug.dumpCurrentStackTrace(.{});
-    return error.Unexpected;
-}
 
 //
 // cpu
@@ -196,12 +62,12 @@ pub const Equeue = extern struct {
     pub fn init(name: [:0]const u8) CreateError!Equeue {
         var handle: *anyopaque = undefined;
         const result = sceKernelCreateEqueue(&handle, name);
-        if (result < 0) switch (convertErrno(result)) {
-            E.FAULT => unreachable,
-            E.INVAL => unreachable,
-            E.MFILE => return error.SystemResources,
-            E.NOMEM => return error.SystemResources,
-            E.NAMETOOLONG => return error.NameTooLong,
+        if (result < 0) switch (convertSceErrno(result)) {
+            .FAULT => unreachable,
+            .INVAL => unreachable,
+            .MFILE => return error.SystemResources,
+            .NOMEM => return error.SystemResources,
+            .NAMETOOLONG => return error.NameTooLong,
             else => |err| return unexpectedErrno(err),
         };
         return .{
@@ -211,8 +77,8 @@ pub const Equeue = extern struct {
 
     pub fn deinit(self: *Self) void {
         const result = sceKernelDeleteEqueue(self.handle);
-        if (result < 0) switch (convertErrno(result)) {
-            E.BADF => unreachable,
+        if (result < 0) switch (convertSceErrno(result)) {
+            .BADF => unreachable,
             else => unreachable,
         };
     }
@@ -232,12 +98,12 @@ pub const Equeue = extern struct {
             &num_written,
             timeout,
         );
-        if (result < 0) switch (convertErrno(result)) {
-            E.FAULT => unreachable,
-            E.INVAL => unreachable,
-            E.MFILE => return error.SystemResources,
-            E.NOMEM => return error.SystemResources,
-            E.NAMETOOLONG => return error.NameTooLong,
+        if (result < 0) switch (convertSceErrno(result)) {
+            .FAULT => unreachable,
+            .INVAL => unreachable,
+            .MFILE => return error.SystemResources,
+            .NOMEM => return error.SystemResources,
+            .NAMETOOLONG => return error.NameTooLong,
             else => |err| return unexpectedErrno(err),
         };
         const cast_written = math.cast(u32, num_written) orelse return error.Unexpected;
@@ -264,6 +130,86 @@ pub extern "kernel" fn sceKernelWaitEqueue(
     num_events_written: *i32,
     timeout: ?*Useconds,
 ) i32;
+
+//
+// filesystem
+//
+pub const FileOpenError = std.Io.File.OpenError || error{WouldBlock};
+
+pub fn fileOpenAbsolute(path: [:0]const u8, flags: ps4.O, perm: ps4.mode_t) FileOpenError!ps4.fd_t {
+    while (true) {
+        const rc = _open(path.ptr, flags, perm);
+        switch (ps4.errno(rc)) {
+            .SUCCESS => return @intCast(rc),
+            .INTR => continue,
+
+            .FAULT => unreachable,
+            .INVAL => return error.BadPathName,
+            .BADF => unreachable,
+            .ACCES => return error.AccessDenied,
+            .FBIG => return error.FileTooBig,
+            .OVERFLOW => return error.FileTooBig,
+            .ISDIR => return error.IsDir,
+            .LOOP => return error.SymLinkLoop,
+            .MFILE => return error.ProcessFdQuotaExceeded,
+            .NAMETOOLONG => return error.NameTooLong,
+            .NFILE => return error.SystemFdQuotaExceeded,
+            .NODEV => return error.NoDevice,
+            .NOENT => return error.FileNotFound,
+            .SRCH => return error.FileNotFound,
+            .NOMEM => return error.SystemResources,
+            .NOSPC => return error.NoSpaceLeft,
+            .NOTDIR => return error.NotDir,
+            .PERM => return error.PermissionDenied,
+            .EXIST => return error.PathAlreadyExists,
+            .BUSY => return error.DeviceBusy,
+            .OPNOTSUPP => return error.FileLocksUnsupported,
+            .AGAIN => return error.WouldBlock,
+            .TXTBSY => return error.FileBusy,
+            .NXIO => return error.NoDevice,
+            .ILSEQ => return error.BadPathName,
+            else => |err| return unexpectedErrno(err),
+        }
+    }
+}
+
+pub fn fileClose(fd: ps4.fd_t) void {
+    switch (ps4.errno(ps4.close(fd))) {
+        .SUCCESS, .INTR => {}, // INTR still a success, see https://github.com/ziglang/zig/issues/2425
+        .BADF => unreachable, // use after free
+        else => unreachable, // unexpected failure
+    }
+}
+
+pub fn createDirAbsolute(path: [:0]const u8, mode: ps4.mode_t) std.Io.Dir.CreateDirError!void {
+    while (true) {
+        const rc = ps4.errno(mkdir(path.ptr, mode));
+        switch (rc) {
+            .SUCCESS => return,
+            .INTR => continue,
+
+            .ACCES => return error.AccessDenied,
+            .PERM => return error.PermissionDenied,
+            .DQUOT => return error.DiskQuota,
+            .EXIST => return error.PathAlreadyExists,
+            .LOOP => return error.SymLinkLoop,
+            .MLINK => return error.LinkQuotaExceeded,
+            .NAMETOOLONG => return error.NameTooLong,
+            .NOENT => return error.FileNotFound,
+            .NOMEM => return error.SystemResources,
+            .NOSPC => return error.NoSpaceLeft,
+            .NOTDIR => return error.NotDir,
+            .ROFS => return error.ReadOnlyFileSystem,
+            .ILSEQ => return error.BadPathName,
+            .BADF => unreachable,
+            .FAULT => unreachable,
+            else => |err| return unexpectedErrno(err),
+        }
+    }
+}
+
+extern "kernel" fn _open(path: [*:0]const u8, flags: ps4.O, perm: ps4.mode_t) i32;
+extern "kernel" fn mkdir(path: [*:0]const u8, mode: ps4.mode_t) i32;
 
 //
 // memory
@@ -397,7 +343,7 @@ pub fn allocateDirectMemory(
         memory_type,
         &phys_addr,
     );
-    if (status < 0) switch (convertErrno(status)) {
+    if (status < 0) switch (convertSceErrno(status)) {
         .INVAL => unreachable,
         .AGAIN => return error.CantAllocate,
         else => |err| return unexpectedErrno(err),
@@ -423,7 +369,7 @@ pub fn mapDirectMemory(
     var out_addr: ?[*]align(page_size_min) u8 = if (desired_virtual_address) |addr| addr else null;
 
     const status = sceKernelMapDirectMemory(&out_addr, length, protection, flags, phys_address, alignment);
-    if (status < 0) switch (convertErrno(status)) {
+    if (status < 0) switch (convertSceErrno(status)) {
         .ACCES => return error.AccessDenied,
         .BUSY => return error.AlreadyMapped,
         .INVAL => unreachable,
@@ -460,7 +406,7 @@ pub fn virtualQueryInfo(
 ) VirtualQueryInfoError!VirtualQueryInfo {
     var query_info: VirtualQueryInfo = undefined;
     const status = sceKernelVirtualQuery(address, 0, &query_info, @sizeOf(@TypeOf(query_info)));
-    if (status < 0) switch (convertErrno(status)) {
+    if (status < 0) switch (convertSceErrno(status)) {
         .ACCES => return error.NotMapped,
         .FAULT => unreachable,
         .INVAL => unreachable,
@@ -504,3 +450,17 @@ pub extern "kernel" fn sceKernelVirtualQuery(
     out_query_info: *VirtualQueryInfo,
     size_of_query_info: usize,
 ) callconv(.c) i32;
+
+fn convertSceErrno(val: i32) ps4.E {
+    assert(val < 0);
+    return @fromBackingInt(@intCast(0x7FFE0000 - val));
+}
+
+pub const UnexpectedError = error{
+    Unexpected,
+};
+fn unexpectedErrno(err: ps4.E) UnexpectedError {
+    std.debug.print("unexpected errno: {}\n", .{err});
+    std.debug.dumpCurrentStackTrace(.{});
+    return error.Unexpected;
+}
